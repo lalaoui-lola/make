@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recipe Scraper API</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+        .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+        h1 { font-size: 2.5rem; background: linear-gradient(135deg, #38bdf8, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }
+        .subtitle { color: #94a3b8; font-size: 1.1rem; margin-bottom: 40px; }
+        .status { display: inline-flex; align-items: center; gap: 8px; background: #064e3b; color: #6ee7b7; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin-bottom: 30px; }
+        .status .dot { width: 8px; height: 8px; background: #6ee7b7; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px; margin-bottom: 16px; transition: border-color 0.2s; }
+        .card:hover { border-color: #818cf8; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .method { background: #065f46; color: #6ee7b7; padding: 3px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; }
+        .endpoint { font-size: 1.1rem; font-weight: 600; color: #f1f5f9; }
+        .desc { color: #94a3b8; font-size: 0.9rem; margin-bottom: 16px; }
+        .try-btn { background: #4f46e5; color: white; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: background 0.2s; }
+        .try-btn:hover { background: #6366f1; }
+        .try-btn:disabled { background: #334155; cursor: wait; }
+        .result-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-top: 12px; display: none; max-height: 400px; overflow-y: auto; }
+        .result-box pre { font-size: 0.8rem; color: #a5f3fc; white-space: pre-wrap; word-break: break-all; }
+        .input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .input-row input { flex: 1; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 8px 12px; border-radius: 8px; font-size: 0.9rem; }
+        .input-row input::placeholder { color: #475569; }
+        .timer { color: #94a3b8; font-size: 0.8rem; margin-top: 8px; }
+        .footer { text-align: center; color: #475569; font-size: 0.8rem; margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status"><span class="dot"></span> API Online</div>
+        <h1>Recipe Scraper API</h1>
+        <p class="subtitle">Scrape real recipes from the web. Powered by Vercel serverless functions.</p>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="endpoint">/api/health</span>
+                <span class="method">GET</span>
+            </div>
+            <p class="desc">Check if the API is running.</p>
+            <button class="try-btn" onclick="testEndpoint('/api/health', 'health-result')">Test it</button>
+            <div class="result-box" id="health-result"><pre></pre></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="endpoint">/api/titles</span>
+                <span class="method">GET</span>
+            </div>
+            <p class="desc">Find real recipe titles from Google/DuckDuckGo for a category.</p>
+            <div class="input-row">
+                <input type="text" id="titles-cat" placeholder="Category (e.g. desserts)" value="desserts">
+                <input type="number" id="titles-n" placeholder="Count" value="2" style="max-width:70px">
+            </div>
+            <button class="try-btn" onclick="testTitles(this)">Search titles</button>
+            <div class="result-box" id="titles-result"><pre></pre></div>
+            <div class="timer" id="titles-timer"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="endpoint">/api/search</span>
+                <span class="method">GET</span>
+            </div>
+            <p class="desc">Search for recipe URLs on Google/DuckDuckGo.</p>
+            <div class="input-row">
+                <input type="text" id="search-q" placeholder="Recipe name (e.g. chocolate cake)" value="chocolate cake">
+                <input type="number" id="search-n" placeholder="Count" value="3" style="max-width:70px">
+            </div>
+            <button class="try-btn" onclick="testSearch(this)">Search</button>
+            <div class="result-box" id="search-result"><pre></pre></div>
+            <div class="timer" id="search-timer"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="endpoint">/api/scrape</span>
+                <span class="method">GET</span>
+            </div>
+            <p class="desc">Scrape a recipe page and extract structured data (ingredients, steps, etc).</p>
+            <div class="input-row">
+                <input type="text" id="scrape-url" placeholder="Recipe URL" value="https://www.allrecipes.com/recipe/10813/best-chocolate-chip-cookies/">
+            </div>
+            <button class="try-btn" onclick="testScrape(this)">Scrape</button>
+            <div class="result-box" id="scrape-result"><pre></pre></div>
+            <div class="timer" id="scrape-timer"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="endpoint">/api/full</span>
+                <span class="method">GET</span>
+            </div>
+            <p class="desc">Search + Scrape in one call. Returns recipe data + AI-ready context.</p>
+            <div class="input-row">
+                <input type="text" id="full-q" placeholder="Recipe name" value="banana bread">
+                <input type="number" id="full-n" placeholder="Sources" value="2" style="max-width:70px">
+            </div>
+            <button class="try-btn" onclick="testFull(this)">Search & Scrape</button>
+            <div class="result-box" id="full-result"><pre></pre></div>
+            <div class="timer" id="full-timer"></div>
+        </div>
+
+        <div class="footer">Made for Make.com automation &bull; kylarecipes.net</div>
+    </div>
+
+    <script>
+        async function fetchAPI(url, resultId, timerId, btn) {
+            var box = document.getElementById(resultId);
+            var pre = box.querySelector('pre');
+            var timer = timerId ? document.getElementById(timerId) : null;
+            box.style.display = 'block';
+            pre.textContent = 'Loading...';
+            if (btn) btn.disabled = true;
+            var start = Date.now();
+            try {
+                var res = await fetch(url);
+                var data = await res.json();
+                pre.textContent = JSON.stringify(data, null, 2);
+                if (timer) timer.textContent = 'Response time: ' + (Date.now() - start) + 'ms';
+            } catch (e) {
+                pre.textContent = 'Error: ' + e.message;
+            }
+            if (btn) btn.disabled = false;
+        }
+
+        function testEndpoint(url, resultId) {
+            fetchAPI(url, resultId);
+        }
+
+        function testTitles(btn) {
+            var cat = document.getElementById('titles-cat').value;
+            var n = document.getElementById('titles-n').value;
+            fetchAPI('/api/titles?category=' + encodeURIComponent(cat) + '&n=' + n, 'titles-result', 'titles-timer', btn);
+        }
+
+        function testSearch(btn) {
+            var q = document.getElementById('search-q').value;
+            var n = document.getElementById('search-n').value;
+            fetchAPI('/api/search?q=' + encodeURIComponent(q) + '&n=' + n, 'search-result', 'search-timer', btn);
+        }
+
+        function testScrape(btn) {
+            var url = document.getElementById('scrape-url').value;
+            fetchAPI('/api/scrape?url=' + encodeURIComponent(url), 'scrape-result', 'scrape-timer', btn);
+        }
+
+        function testFull(btn) {
+            var q = document.getElementById('full-q').value;
+            var n = document.getElementById('full-n').value;
+            fetchAPI('/api/full?q=' + encodeURIComponent(q) + '&n=' + n, 'full-result', 'full-timer', btn);
+        }
+    </script>
+</body>
+</html>
