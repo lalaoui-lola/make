@@ -1,10 +1,11 @@
-from http.server import BaseHTTPRequestHandler
+from flask import Flask, request, jsonify
 import json
-import requests
+import requests as http_requests
 from bs4 import BeautifulSoup, Comment
 import random
 import urllib.parse
-import re
+
+app = Flask(__name__)
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -12,17 +13,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
 ]
 
-REMOVE_TAGS = [
-    "script", "style", "nav", "footer", "header", "aside", "iframe",
-    "noscript", "form", "button", "svg", "video", "audio", "figure",
-    "figcaption", "ins"
-]
-
-REMOVE_CLASSES = [
-    "comment", "sidebar", "widget", "nav", "menu", "footer", "header",
-    "ad", "pub", "social", "share", "related", "newsletter", "popup",
-    "cookie", "banner", "breadcrumb", "pagination"
-]
+REMOVE_TAGS = ["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript", "form", "button", "svg", "video", "audio", "figure", "figcaption", "ins"]
+REMOVE_CLASSES = ["comment", "sidebar", "widget", "nav", "menu", "footer", "header", "ad", "pub", "social", "share", "related", "newsletter", "popup", "cookie", "banner", "breadcrumb", "pagination"]
 
 
 def clean_html(soup):
@@ -46,11 +38,11 @@ def extract_json_ld(soup):
             data = json.loads(script.string)
             if isinstance(data, list):
                 for item in data:
-                    if item.get("@type") == "Recipe":
+                    if isinstance(item, dict) and item.get("@type") == "Recipe":
                         return item
-                    if "@graph" in item:
+                    if isinstance(item, dict) and "@graph" in item:
                         for g in item["@graph"]:
-                            if g.get("@type") == "Recipe":
+                            if isinstance(g, dict) and g.get("@type") == "Recipe":
                                 return g
             if isinstance(data, dict):
                 if data.get("@type") == "Recipe":
@@ -68,7 +60,6 @@ def extract_recipe_content(html, url):
     soup = BeautifulSoup(html, "html.parser")
     recipe = {"url": url, "title": "", "ingredients": [], "steps": [], "full_text": ""}
 
-    # JSON-LD d'abord
     json_ld = extract_json_ld(BeautifulSoup(html, "html.parser"))
     if json_ld:
         recipe["title"] = json_ld.get("name", "")
@@ -84,7 +75,6 @@ def extract_recipe_content(html, url):
                     recipe["steps"].append(step.get("text", ""))
 
     soup = clean_html(soup)
-
     if not recipe["title"]:
         h1 = soup.find("h1")
         recipe["title"] = h1.get_text(strip=True) if h1 else ""
@@ -99,21 +89,16 @@ def extract_recipe_content(html, url):
 def search_duckduckgo(query, num_results=3):
     encoded_query = urllib.parse.quote(f"recipe {query}")
     url = f"https://html.duckduckgo.com/html/?q={encoded_query}"
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    headers = {"User-Agent": random.choice(USER_AGENTS), "Accept": "text/html", "Accept-Language": "en-US,en;q=0.9"}
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = http_requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         results = []
         for r in soup.select(".result"):
             link = r.select_one("a.result__a")
             if link:
-                href = link.get("href", "")
-                results.append(href)
+                results.append(link.get("href", ""))
                 if len(results) >= num_results:
                     break
         return results
@@ -124,14 +109,9 @@ def search_duckduckgo(query, num_results=3):
 def search_google(query, num_results=3):
     encoded_query = urllib.parse.quote(f"recipe {query}")
     url = f"https://www.google.com/search?q={encoded_query}&num={num_results + 5}&hl=en"
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html",
-        "Accept-Language": "en-US,en;q=0.9",
-        "DNT": "1",
-    }
+    headers = {"User-Agent": random.choice(USER_AGENTS), "Accept": "text/html", "Accept-Language": "en-US,en;q=0.9", "DNT": "1"}
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = http_requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         results = []
@@ -147,13 +127,9 @@ def search_google(query, num_results=3):
 
 
 def scrape_url(url):
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "text/html",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    headers = {"User-Agent": random.choice(USER_AGENTS), "Accept": "text/html", "Accept-Language": "en-US,en;q=0.9"}
     try:
-        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        response = http_requests.get(url, headers=headers, timeout=15, allow_redirects=True)
         response.raise_for_status()
         response.encoding = response.apparent_encoding
         return extract_recipe_content(response.text, url)
@@ -161,132 +137,48 @@ def scrape_url(url):
         return {"url": url, "error": str(e)}
 
 
-class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        """
-        GET /api/full?q=tarte+aux+pommes&n=2
-        Recherche + scrape en un seul appel.
-        Retourne les recettes scrapées prêtes à envoyer à l'IA.
-        """
-        parsed = urllib.parse.urlparse(self.path)
-        params = urllib.parse.parse_qs(parsed.query)
+def build_context(recipes):
+    context_parts = []
+    for i, r in enumerate(recipes, 1):
+        parts = [f"=== SOURCE RECIPE {i} ==="]
+        if r.get("title"):
+            parts.append(f"Title: {r['title']}")
+        if r.get("ingredients"):
+            parts.append("Ingredients: " + ", ".join(r["ingredients"]))
+        if r.get("steps"):
+            parts.append("Steps: " + " | ".join(r["steps"]))
+        elif r.get("full_text"):
+            parts.append(f"Content: {r['full_text'][:2000]}")
+        context_parts.append("\n".join(parts))
+    return "\n\n".join(context_parts)
 
-        query = params.get("q", [None])[0]
-        num = int(params.get("n", [2])[0])
 
-        if not query:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({
-                "error": "Paramètre 'q' manquant. Usage: /api/full?q=tarte+aux+pommes"
-            }).encode())
-            return
+@app.route("/api/full", methods=["GET"])
+def full():
+    query = request.args.get("q")
+    num = int(request.args.get("n", 2))
 
-        # Recherche
-        urls = search_google(query, num)
-        if not urls:
-            urls = search_duckduckgo(query, num)
+    if not query:
+        resp = jsonify({"error": "Parameter 'q' missing. Usage: /api/full?q=banana+bread"})
+        resp.status_code = 400
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
 
-        if not urls:
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({
-                "query": query,
-                "count": 0,
-                "recipes": [],
-                "context_for_ai": f"No recipes found for '{query}'. Generate the recipe based on your knowledge."
-            }, ensure_ascii=False).encode())
-            return
+    urls = search_google(query, num)
+    if not urls:
+        urls = search_duckduckgo(query, num)
 
-        # Scrape chaque URL
-        recipes = []
-        for url in urls[:num]:
-            recipe = scrape_url(url)
-            if "error" not in recipe:
-                recipes.append(recipe)
+    if not urls:
+        resp = jsonify({"query": query, "count": 0, "recipes": [], "context_for_ai": f"No recipes found for '{query}'. Generate the recipe based on your knowledge."})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
 
-        # Préparer le contexte pour l'IA
-        context_parts = []
-        for i, r in enumerate(recipes, 1):
-            parts = [f"=== SOURCE RECIPE {i} ==="]
-            if r.get("title"):
-                parts.append(f"Title: {r['title']}")
-            if r.get("ingredients"):
-                parts.append("Ingredients: " + ", ".join(r["ingredients"]))
-            if r.get("steps"):
-                parts.append("Steps: " + " | ".join(r["steps"]))
-            elif r.get("full_text"):
-                parts.append(f"Content: {r['full_text'][:2000]}")
-            context_parts.append("\n".join(parts))
+    recipes = []
+    for url in urls[:num]:
+        recipe = scrape_url(url)
+        if "error" not in recipe:
+            recipes.append(recipe)
 
-        context_for_ai = "\n\n".join(context_parts)
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps({
-            "query": query,
-            "count": len(recipes),
-            "recipes": recipes,
-            "context_for_ai": context_for_ai
-        }, ensure_ascii=False).encode())
-
-    def do_POST(self):
-        """POST /api/full avec body JSON {"query": "tarte aux pommes", "num_results": 2}"""
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length)
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "JSON invalide"}).encode())
-            return
-
-        query = data.get("query")
-        num = data.get("num_results", 2)
-
-        if not query:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Champ 'query' manquant"}).encode())
-            return
-
-        urls = search_google(query, num)
-        if not urls:
-            urls = search_duckduckgo(query, num)
-
-        recipes = []
-        for url in urls[:num]:
-            recipe = scrape_url(url)
-            if "error" not in recipe:
-                recipes.append(recipe)
-
-        context_parts = []
-        for i, r in enumerate(recipes, 1):
-            parts = [f"=== SOURCE RECIPE {i} ==="]
-            if r.get("title"):
-                parts.append(f"Title: {r['title']}")
-            if r.get("ingredients"):
-                parts.append("Ingredients: " + ", ".join(r["ingredients"]))
-            if r.get("steps"):
-                parts.append("Steps: " + " | ".join(r["steps"]))
-            elif r.get("full_text"):
-                parts.append(f"Content: {r['full_text'][:2000]}")
-            context_parts.append("\n".join(parts))
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps({
-            "query": query,
-            "count": len(recipes),
-            "recipes": recipes,
-            "context_for_ai": "\n\n".join(context_parts)
-        }, ensure_ascii=False).encode())
+    resp = jsonify({"query": query, "count": len(recipes), "recipes": recipes, "context_for_ai": build_context(recipes)})
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
