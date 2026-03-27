@@ -65,11 +65,11 @@ def extract_json_ld(soup):
 
 
 def extract_recipe_content(html, url):
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
     recipe = {"url": url, "title": "", "ingredients": [], "steps": [], "full_text": ""}
 
     # JSON-LD d'abord
-    json_ld = extract_json_ld(BeautifulSoup(html, "lxml"))
+    json_ld = extract_json_ld(BeautifulSoup(html, "html.parser"))
     if json_ld:
         recipe["title"] = json_ld.get("name", "")
         ingredients = json_ld.get("recipeIngredient", [])
@@ -107,7 +107,7 @@ def search_duckduckgo(query, num_results=3):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
+        soup = BeautifulSoup(response.text, "html.parser")
         results = []
         for r in soup.select(".result"):
             link = r.select_one("a.result__a")
@@ -133,7 +133,7 @@ def search_google(query, num_results=3):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
+        soup = BeautifulSoup(response.text, "html.parser")
         results = []
         for g in soup.select("div.g"):
             link = g.select_one("a")

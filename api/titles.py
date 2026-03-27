@@ -54,7 +54,7 @@ def search_titles_google(category, num_results=5):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
+        soup = BeautifulSoup(response.text, "html.parser")
 
         results = []
         seen_titles = set()
@@ -105,7 +105,7 @@ def search_titles_duckduckgo(category, num_results=5):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
+        soup = BeautifulSoup(response.text, "html.parser")
 
         results = []
         seen_titles = set()

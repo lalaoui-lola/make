@@ -40,7 +40,7 @@ def search_google(query, num_results=3):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
+        soup = BeautifulSoup(response.text, "html.parser")
 
         results = []
         for g in soup.select("div.g"):
@@ -78,7 +78,7 @@ def search_duckduckgo(query, num_results=3):
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, "lxml")
+        soup = BeautifulSoup(response.text, "html.parser")
 
         results = []
         for r in soup.select(".result"):

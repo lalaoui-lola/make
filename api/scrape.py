@@ -46,7 +46,7 @@ def clean_html(soup):
 
 def extract_recipe_content(html, url):
     """Extrait le contenu structuré d'une recette depuis le HTML."""
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
     soup = clean_html(soup)
 
     recipe = {
