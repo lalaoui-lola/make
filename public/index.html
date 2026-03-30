@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recipe Scraper v4 — Testeur Multi-Sources</title>
+  <meta name="description" content="Testez le scraper de recettes multi-sources : TheMealDB, 750g, CuisineAZ, Ptitchef, Edamam, Spoonacular." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0d0f14;
+      --card:     #161b26;
+      --border:   #2a3149;
+      --accent:   #f97316;
+      --accent2:  #8b5cf6;
+      --green:    #22c55e;
+      --red:      #ef4444;
+      --yellow:   #eab308;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --radius:   14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", sans-serif;
+      min-height: 100vh;
+      padding: 24px 16px 60px;
+    }
+
+    /* ─── Header ─── */
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    header h1 {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: 0.95rem;
+    }
+
+    /* ─── Sources badges ─── */
+    .sources-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+    .source-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .source-badge:hover, .source-badge.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 12px rgba(249,115,22,.2);
+    }
+    .source-badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .dot-green  { background: var(--green); }
+    .dot-key    { background: var(--yellow); }
+
+    /* ─── Form ─── */
+    .form-card {
+      max-width: 740px;
+      margin: 0 auto 28px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    @media(max-width:560px){ .form-row { grid-template-columns: 1fr; } }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    input, select {
+      width: 100%;
+      background: #0d0f14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 0.92rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    .btn-row { display: flex; gap: 10px; margin-top: 6px; }
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #ea580c);
+      color: #fff;
+    }
+    .btn-primary:hover { opacity: .9; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(249,115,22,.35); }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .btn-secondary:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ─── Status bar ─── */
+    #status-bar {
+      max-width: 740px;
+      margin: 0 auto 16px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      display: none;
+    }
+    #status-bar.loading { background: rgba(139,92,246,.12); border: 1px solid var(--accent2); color: var(--accent2); display: block; }
+    #status-bar.success { background: rgba(34,197,94,.1); border: 1px solid var(--green); color: var(--green); display: block; }
+    #status-bar.error   { background: rgba(239,68,68,.1); border: 1px solid var(--red); color: var(--red); display: block; }
+
+    /* ─── Results ─── */
+    #results { max-width: 740px; margin: 0 auto; }
+    .recipe-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 18px;
+      overflow: hidden;
+      animation: fadeUp .35s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .recipe-header {
+      display: flex;
+      gap: 16px;
+      padding: 18px;
+      align-items: flex-start;
+    }
+    .recipe-img {
+      width: 90px;
+      height: 90px;
+      border-radius: 10px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--bg);
+    }
+    .recipe-meta h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+    .recipe-meta small {
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .tag {
+      background: rgba(249,115,22,.12);
+      color: var(--accent);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 500;
+    }
+    .recipe-body { padding: 0 18px 18px; }
+    .section-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      margin: 12px 0 6px;
+      font-weight: 600;
+    }
+    .recipe-body ul { padding-left: 18px; }
+    .recipe-body li { font-size: 0.88rem; padding: 2px 0; color: #c4cde0; }
+    .recipe-body ol li { font-size: 0.86rem; padding: 3px 0; color: #c4cde0; line-height: 1.5; }
+
+    /* ─── AI context box ─── */
+    .ai-box {
+      max-width: 740px;
+      margin: 0 auto 28px;
+      background: #0b1120;
+      border: 1px solid #1e3a5f;
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .ai-box-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      color: #3b82f6;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: .05em;
+    }
+    .ai-box pre {
+      font-size: 0.78rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #93c5fd;
+      max-height: 260px;
+      overflow-y: auto;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+    }
+
+    /* ─── Quick links ─── */
+    .quick-links {
+      max-width: 740px;
+      margin: 0 auto 28px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .quick-link {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .2s;
+      text-decoration: none;
+    }
+    .quick-link:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── Spinner ─── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(139,92,246,.3);
+      border-top-color: var(--accent2);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🍳 Recipe Scraper v4</h1>
+  <p>Multi-sources · Recettes françaises &amp; internationales · Auto-cascade</p>
+</header>
+
+<!-- Sources -->
+<div class="sources-bar">
+  <span class="source-badge active" data-src="auto"><span class="dot dot-green"></span>🔀 Auto</span>
+  <span class="source-badge" data-src="themealdb"><span class="dot dot-green"></span>TheMealDB</span>
+  <span class="source-badge" data-src="750g"><span class="dot dot-green"></span>750g.com</span>
+  <span class="source-badge" data-src="cuisineaz"><span class="dot dot-green"></span>CuisineAZ</span>
+  <span class="source-badge" data-src="ptitchef"><span class="dot dot-green"></span>Ptitchef</span>
+  <span class="source-badge" data-src="edamam"><span class="dot dot-key"></span>Edamam</span>
+  <span class="source-badge" data-src="spoonacular"><span class="dot dot-key"></span>Spoonacular</span>
+</div>
+
+<!-- Form -->
+<div class="form-card">
+  <div class="form-row">
+    <div>
+      <label for="inp-q">Recherche libre</label>
+      <input id="inp-q" type="text" placeholder="ex: gateau chocolat, tarte citron..." />
+    </div>
+    <div>
+      <label for="inp-cat">Catégorie</label>
+      <select id="inp-cat">
+        <option value="">— Aucune —</option>
+        <option value="dessert">Dessert</option>
+        <option value="gateau">Gâteau</option>
+        <option value="tarte">Tarte</option>
+        <option value="plat-principal">Plat principal</option>
+        <option value="entree">Entrée</option>
+        <option value="soupe">Soupe</option>
+        <option value="salade">Salade</option>
+        <option value="pasta">Pâtes</option>
+        <option value="poisson">Poisson</option>
+        <option value="viande">Viande</option>
+        <option value="poulet">Poulet</option>
+        <option value="vegetarien">Végétarien</option>
+        <option value="pain">Pain</option>
+        <option value="aperitif">Apéritif</option>
+        <option value="biscuit">Biscuits</option>
+        <option value="confiture">Confiture</option>
+        <option value="sauce">Sauce</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-row">
+    <div>
+      <label for="inp-n">Nombre de recettes</label>
+      <select id="inp-n">
+        <option value="1" selected>1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select>
+    </div>
+    <div>
+      <label>Source sélectionnée</label>
+      <input id="inp-source-display" type="text" value="auto" readonly style="opacity:.6;cursor:default;" />
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn-primary" onclick="fetchRecipe()">🔍 Tester</button>
+    <button class="btn-secondary" onclick="fetchRandom()">🎲 Aléatoire</button>
+    <button class="btn-secondary" onclick="clearResults()">✕ Effacer</button>
+  </div>
+</div>
+
+<!-- Quick examples -->
+<div class="quick-links">
+  <span class="quick-link" onclick="quickTest('gateau chocolat','','1','auto')">🎂 Gâteau chocolat</span>
+  <span class="quick-link" onclick="quickTest('','dessert','2','themealdb')">🍰 Desserts MealDB</span>
+  <span class="quick-link" onclick="quickTest('tarte citron','','1','750g')">🍋 Tarte citron 750g</span>
+  <span class="quick-link" onclick="quickTest('poulet roti','','1','cuisineaz')">🍗 Poulet CuisineAZ</span>
+  <span class="quick-link" onclick="quickTest('','soupe','1','ptitchef')">🥣 Soupe Ptitchef</span>
+  <span class="quick-link" onclick="testHealth()">❤️ Health Check</span>
+</div>
+
+<div id="status-bar"></div>
+<div id="results"></div>
+
+<script>
+  let selectedSource = "auto";
+
+  // Source badges
+  document.querySelectorAll(".source-badge").forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".source-badge").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      selectedSource = b.dataset.src;
+      document.getElementById("inp-source-display").value = selectedSource;
+    });
+  });
+
+  function getBase() {
+    return window.location.origin;
+  }
+
+  function showStatus(msg, type) {
+    const bar = document.getElementById("status-bar");
+    bar.className = type;
+    bar.innerHTML = type === "loading"
+      ? `<span class="spinner"></span>${msg}`
+      : msg;
+  }
+
+  function quickTest(q, cat, n, src) {
+    document.getElementById("inp-q").value = q;
+    document.getElementById("inp-cat").value = cat;
+    document.getElementById("inp-n").value = n;
+    document.querySelectorAll(".source-badge").forEach(x => x.classList.remove("active"));
+    const badge = document.querySelector(`[data-src="${src}"]`);
+    if (badge) badge.classList.add("active");
+    selectedSource = src;
+    document.getElementById("inp-source-display").value = src;
+    fetchRecipe();
+  }
+
+  function clearResults() {
+    document.getElementById("results").innerHTML = "";
+    document.getElementById("status-bar").className = "";
+    document.getElementById("status-bar").innerHTML = "";
+  }
+
+  async function fetchRandom() {
+    showStatus("Récupération d'une recette aléatoire TheMealDB…", "loading");
+    document.getElementById("results").innerHTML = "";
+    try {
+      const r = await fetch(`${getBase()}/api/themealdb?random=1`);
+      const data = await r.json();
+      renderResults(data, "aléatoire");
+    } catch (e) {
+      showStatus(`❌ Erreur : ${e.message}`, "error");
+    }
+  }
+
+  async function testHealth() {
+    showStatus("Test du serveur…", "loading");
+    document.getElementById("results").innerHTML = "";
+    try {
+      const r = await fetch(`${getBase()}/api/health`);
+      const data = await r.json();
+      document.getElementById("results").innerHTML = `
+        <div class="recipe-card">
+          <div class="recipe-header">
+            <div class="recipe-meta">
+              <h2>✅ Serveur opérationnel — ${data.version}</h2>
+              <small><span>${data.service}</span></small>
+            </div>
+          </div>
+          <div class="recipe-body">
+            <div class="section-title">Sources disponibles</div>
+            <ul>${Object.entries(data.sources || {}).map(([k,v]) => `<li><strong>${k}</strong> — ${v}</li>`).join("")}</ul>
+            <div class="section-title" style="margin-top:14px">Endpoints</div>
+            <ul>${Object.entries(data.endpoints || {}).map(([k,v]) => `<li><code style="font-size:.75rem;color:#8b5cf6">${v}</code></li>`).join("")}</ul>
+          </div>
+        </div>`;
+      showStatus("✅ Serveur OK", "success");
+    } catch (e) {
+      showStatus(`❌ Serveur inaccessible : ${e.message}`, "error");
+    }
+  }
+
+  async function fetchRecipe() {
+    const q   = document.getElementById("inp-q").value.trim();
+    const cat = document.getElementById("inp-cat").value;
+    const n   = document.getElementById("inp-n").value;
+    const src = selectedSource;
+
+    if (!q && !cat) {
+      showStatus("⚠️ Entrez un terme de recherche ou choisissez une catégorie.", "error");
+      return;
+    }
+
+    const params = new URLSearchParams({ n, source: src });
+    if (q)   params.set("q", q);
+    if (cat) params.set("category", cat);
+
+    let endpoint = "recipe";
+    if (src === "themealdb") { endpoint = "themealdb"; params.delete("source"); }
+    else if (src === "750g") { endpoint = "750g"; params.delete("source"); }
+    else if (src === "cuisineaz") { endpoint = "cuisineaz"; params.delete("source"); }
+    else if (src === "ptitchef") { endpoint = "ptitchef"; params.delete("source"); }
+    else if (src === "edamam") { endpoint = "edamam"; params.delete("source"); }
+    else if (src === "spoonacular") { endpoint = "spoonacular"; params.delete("source"); }
+
+    const url = `${getBase()}/api/${endpoint}?${params}`;
+    showStatus(`🔍 Recherche via <strong>${src}</strong>…`, "loading");
+    document.getElementById("results").innerHTML = "";
+
+    try {
+      const r    = await fetch(url);
+      const data = await r.json();
+
+      if (data.error) {
+        showStatus(`❌ ${data.error}`, "error");
+        return;
+      }
+
+      renderResults(data, q || cat);
+    } catch (e) {
+      showStatus(`❌ Erreur réseau : ${e.message}`, "error");
+    }
+  }
+
+  function renderResults(data, label) {
+    const recipes = data.recipes || [];
+    const used    = data.source_used || data.source || selectedSource;
+    const count   = data.count ?? recipes.length;
+
+    if (count === 0) {
+      showStatus(`⚠️ Aucune recette trouvée pour "${label}" via ${used}.`, "error");
+      return;
+    }
+
+    showStatus(`✅ ${count} recette(s) trouvée(s) via <strong>${used}</strong>`, "success");
+
+    let html = "";
+
+    // AI context box
+    if (data.context_for_ai) {
+      html += `
+        <div class="ai-box">
+          <div class="ai-box-title">📋 Contexte IA (prêt pour Make.com / GPT)</div>
+          <pre>${escHtml(data.context_for_ai)}</pre>
+        </div>`;
+    }
+
+    // Recipe cards
+    for (const r of recipes) {
+      const tags = [...(r.tags || []), r.category || ""].filter(Boolean);
+      const time = [
+        r.prep_time  ? `⏱ Prép: ${r.prep_time}` : null,
+        r.cook_time  ? `🔥 Cuisson: ${r.cook_time}` : null,
+        r.total_time ? `⏰ Total: ${r.total_time}` : null,
+        r.servings   ? `👤 ${r.servings} pers.` : null,
+      ].filter(Boolean).join(" · ");
+
+      html += `
+        <div class="recipe-card">
+          <div class="recipe-header">
+            ${r.image ? `<img class="recipe-img" src="${escHtml(r.image)}" alt="${escHtml(r.title)}" loading="lazy" />` : ""}
+            <div class="recipe-meta">
+              <h2>${escHtml(r.title)}</h2>
+              <small>
+                <span>📍 ${escHtml(r.source_site || used)}</span>
+                ${r.source_type ? `<span>· ${r.source_type}</span>` : ""}
+                ${r.url ? `<a href="${r.url}" target="_blank" style="color:#8b5cf6;font-size:.72rem">→ Source</a>` : ""}
+              </small>
+              ${time ? `<small style="margin-top:2px">${time}</small>` : ""}
+              ${tags.length ? `<div style="margin-top:6px">${tags.slice(0,4).map(t => `<span class="tag">${escHtml(t)}</span>`).join(" ")}</div>` : ""}
+            </div>
+          </div>
+          <div class="recipe-body">
+            ${r.description ? `<p style="font-size:.85rem;color:#94a3b8;margin-bottom:8px">${escHtml(r.description.slice(0,200))}…</p>` : ""}
+            ${r.ingredients && r.ingredients.length ? `
+              <div class="section-title">🧂 Ingrédients (${r.ingredients.length})</div>
+              <ul>${r.ingredients.slice(0,20).map(i => `<li>${escHtml(i)}</li>`).join("")}</ul>
+            ` : "<p style='font-size:.8rem;color:#ef4444'>⚠️ Ingrédients non disponibles</p>"}
+            ${r.steps && r.steps.length ? `
+              <div class="section-title">📋 Étapes (${r.steps.length})</div>
+              <ol>${r.steps.map(s => `<li>${escHtml(s)}</li>`).join("")}</ol>
+            ` : ""}
+          </div>
+        </div>`;
+    }
+
+    document.getElementById("results").innerHTML = html;
+  }
+
+  function escHtml(str) {
+    if (typeof str !== "string") return "";
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // Enter key
+  document.getElementById("inp-q").addEventListener("keydown", e => {
+    if (e.key === "Enter") fetchRecipe();
+  });
+</script>
+</body>
+</html>
