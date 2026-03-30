@@ -85,6 +85,60 @@ FR_TO_EN = {
     "sandwich": "sandwich",
 }
 
+# Catégories EN sans équivalent TheMealDB → traduction FR pour 750g
+CATEGORY_EN_TO_FR_750G = {
+    "salad":        "salade",
+    "salads":       "salade",
+    "soup":         "soupe",
+    "soups":        "soupe",
+    "pizza":        "pizza",
+    "sandwich":     "sandwich",
+    "sandwiches":   "sandwich",
+    "burger":       "burger",
+    "burgers":      "burger",
+    "grilling":     "grill",
+    "grill":        "grill",
+    "bbq":          "barbecue",
+    "barbecue":     "barbecue",
+    "snack":        "snack",
+    "snacks":       "snack",
+    "quick":        "rapide",
+    "healthy":      "léger",
+    "comfort food": "plat réconfortant",
+    "casserole":    "gratin",
+    "stew":         "ragoût",
+    "curry":        "curry",
+    "tacos":        "tacos",
+    "wraps":        "wrap",
+    "dips":         "sauce",
+    "sauce":        "sauce",
+    "bread":        "pain",
+    "muffin":       "muffin",
+    "muffins":      "muffin",
+    "brownie":      "brownie",
+    "brownies":     "brownie",
+    "cheesecake":   "cheesecake",
+    "mousse":       "mousse",
+    "crepe":        "crêpe",
+    "crepes":       "crêpe",
+    "quiche":       "quiche",
+    "risotto":      "risotto",
+    "stir fry":     "sauté",
+    "stir-fry":     "sauté",
+}
+
+
+def _normalize_category(cat):
+    """Normalise une catégorie : supprime suffixes EN, lowercase, strip."""
+    import re as _re
+    c = cat.lower().strip()
+    # Supprimer suffixes EN courants : " recipes", " dishes", " recipe", " food", " meals"
+    c = _re.sub(r'\s+(recipes?|dishes?|meals?|food|ideas?)\s*$', '', c)
+    # Remplacer tirets/underscores par espaces
+    c = c.replace('-', ' ').replace('_', ' ').strip()
+    return c
+
+
 def _translate_fr_to_en(query):
     """Traduit une requête française en anglais pour TheMealDB."""
     words = query.lower().split()
@@ -174,13 +228,18 @@ def recipe():
 
     def _mealdb():
         if category:
-            cat_en = CATEGORY_MAP_FR.get(category.lower().replace("-", ""), category)
+            cat_norm = _normalize_category(category)
+            # Essayer clé exacte, puis sans espaces, puis directement le nom
+            cat_en = (
+                CATEGORY_MAP_FR.get(cat_norm) or
+                CATEGORY_MAP_FR.get(cat_norm.replace(" ", "")) or
+                CATEGORY_MAP_FR.get(cat_norm.replace(" ", "-")) or
+                cat_norm.title()  # fallback : capitalize (ex: "seafood" → "Seafood")
+            )
             return [r for r in mdb_cat(cat_en, n) if "error" not in r and r.get("title")]
         else:
-            # Essayer d'abord la requête originale
             results = [r for r in mdb_search(q, n) if "error" not in r and r.get("title")]
             if not results:
-                # Fallback : traduire FR→EN
                 q_en = _translate_fr_to_en(q)
                 if q_en != q:
                     results = [r for r in mdb_search(q_en, n) if "error" not in r and r.get("title")]
@@ -195,10 +254,17 @@ def recipe():
     elif source == "ptitchef":
         recipes, source_used = _scraper(ptit_search, ptit_cat, None, "ptitchef.com"), "ptitchef"
     else:
+        # Pour les catégories EN sans équivalent TheMealDB, utiliser traduction FR pour 750g
+        cat_norm = _normalize_category(category) if category else ""
+        q_for_750g = CATEGORY_EN_TO_FR_750G.get(cat_norm, q or category)
         # Cascade auto : TheMealDB (API fiable) → 750g (scraping FR)
         for src_name, fn in [
             ("themealdb", _mealdb),
-            ("750g", lambda: _scraper(g750_search, g750_cat, g750_scrape, "750g.com")),
+            ("750g", lambda: _scraper(
+                lambda kw, **kw2: g750_search(q_for_750g, **kw2),
+                lambda kw, **kw2: g750_cat(q_for_750g, **kw2),
+                g750_scrape, "750g.com"
+            )),
         ]:
             try:
                 result = fn()
