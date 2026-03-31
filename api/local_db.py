@@ -33,11 +33,7 @@ def _turso_query(sql, args=None):
     """Exécute une requête SQL sur Turso via HTTP API."""
     stmt = {"sql": sql}
     if args:
-        stmt["args"] = [
-            {"type": "text",    "value": str(a)} if isinstance(a, str)
-            else {"type": "integer", "value": int(a)}
-            for a in args
-        ]
+        stmt["args"] = [{"type": "text", "value": str(a)} for a in args]
     payload = {"requests": [{"type": "execute", "stmt": stmt},
                              {"type": "close"}]}
     resp = _req.post(
