@@ -6,3 +6,6 @@ venv/
 .venv/
 test_*.py
 *.log
+recipes.db
+recipes_online.db
+recipes_data.csv
