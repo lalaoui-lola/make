@@ -26,7 +26,13 @@ from utils import make_recipe, build_ai_context, error_response
 
 app = Flask(__name__)
 
-SPOON_BASE = "https://api.spoonacular.com/recipes"
+SPOON_BASE   = "https://api.spoonacular.com/recipes"
+_DEFAULT_KEY = "12534348bd9348a7ab9d3fc037afe38f"
+
+
+def _get_key():
+    return os.environ.get("SPOONACULAR_API_KEY", _DEFAULT_KEY)
+
 
 # Mapping catégories FR → type de plat Spoonacular
 TYPE_MAP = {
@@ -88,6 +94,38 @@ def _parse_recipe(data, steps_data=None):
         category=", ".join(data.get("dishTypes", [])),
         tags=data.get("diets", []) + data.get("dishTypes", []),
     )
+
+
+def search_recipes(query, n=3, meal_type=""):
+    """Fonction standalone — appelable depuis app.py."""
+    api_key = _get_key()
+    try:
+        params = {
+            "apiKey": api_key, "number": n,
+            "addRecipeInformation": True, "fillIngredients": True,
+            "query": query,
+        }
+        if meal_type:
+            params["type"] = meal_type
+        r = req.get(f"{SPOON_BASE}/complexSearch", params=params, timeout=15)
+        r.raise_for_status()
+        results = r.json().get("results", [])
+        recipes = []
+        for item in results[:n]:
+            recipe = _parse_recipe(item, [])
+            if recipe.get("title") and recipe.get("ingredients"):
+                recipes.append(recipe)
+        return recipes
+    except Exception:
+        return []
+
+
+def search_by_category(category, n=3):
+    """Recherche par catégorie FR/EN — standalone."""
+    cat_slug = category.lower().replace("-", "").replace(" ", "")
+    meal_type = TYPE_MAP.get(cat_slug, "")
+    query = category if not meal_type else ""
+    return search_recipes(query, n=n, meal_type=meal_type)
 
 
 @app.route("/api/spoonacular", methods=["GET"])

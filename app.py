@@ -13,6 +13,9 @@ from flask import Flask, request, jsonify, send_from_directory
 # Import des handlers de chaque source
 from themealdb   import search_by_name as mdb_search, search_by_category as mdb_cat, CATEGORY_MAP_FR, get_random as mdb_random
 from source_750g import _search_urls as g750_search, _list_category_urls as g750_cat, _scrape_recipe as g750_scrape
+from marmiton    import _search_urls as marm_search, _scrape_recipe as marm_scrape
+from spoonacular import search_recipes as spoon_search, search_by_category as spoon_cat
+from local_db    import search_by_category as ldb_cat, search_by_query as ldb_query, is_available as ldb_ok
 from cuisineaz   import _search_urls as caz_search, _list_category_urls as caz_cat
 from ptitchef    import _search_urls as ptit_search, _list_category_urls as ptit_cat
 from utils       import build_ai_context, scrape_url
@@ -173,12 +176,13 @@ def health():
         "service": "recipe-scraper-v4",
         "version": "4.0.0",
         "sources": {
-            "themealdb":   "✅ Gratuit, sans clé",
-            "750g":        "✅ Gratuit, scraping FR",
+            "themealdb":   "✅ Gratuit, sans clé (5000+ recettes EN)",
+            "spoonacular": "✅ Clé active (150/jour, 365k recettes EN)",
+            "750g":        "✅ Gratuit, scraping FR (50k+ recettes)",
+            "marmiton":    "✅ Gratuit, scraping FR (60k+ recettes)",
+            "local":       "✅ Base Kaggle locale (2.2M recettes)" if ldb_ok() else "⚠️ Base locale non créée (lancer setup_local_db.py)",
             "cuisineaz":   "⚠️ JS-rendered (désactivé)",
             "ptitchef":    "⚠️ JS-rendered (désactivé)",
-            "edamam":      "🔑 Clé optionnelle (1500/mois)",
-            "spoonacular": "🔑 Clé optionnelle (150/jour)",
         },
         "endpoints": {
             "recipe":     "/api/recipe?q=gateau+chocolat",
@@ -229,14 +233,21 @@ def recipe():
     def _mealdb():
         if category:
             cat_norm = _normalize_category(category)
-            # Essayer clé exacte, puis sans espaces, puis directement le nom
             cat_en = (
                 CATEGORY_MAP_FR.get(cat_norm) or
                 CATEGORY_MAP_FR.get(cat_norm.replace(" ", "")) or
                 CATEGORY_MAP_FR.get(cat_norm.replace(" ", "-")) or
-                cat_norm.title()  # fallback : capitalize (ex: "seafood" → "Seafood")
+                cat_norm.title()
             )
-            return [r for r in mdb_cat(cat_en, n) if "error" not in r and r.get("title")]
+            results = [r for r in mdb_cat(cat_en, n) if "error" not in r and r.get("title")]
+            # Fallback recherche par nom si catégorie inconnue de TheMealDB
+            if not results:
+                results = [r for r in mdb_search(cat_norm, n) if "error" not in r and r.get("title")]
+            if not results:
+                cat_en_tr = _translate_fr_to_en(cat_norm)
+                if cat_en_tr != cat_norm:
+                    results = [r for r in mdb_search(cat_en_tr, n) if "error" not in r and r.get("title")]
+            return results
         else:
             results = [r for r in mdb_search(q, n) if "error" not in r and r.get("title")]
             if not results:
@@ -254,17 +265,28 @@ def recipe():
     elif source == "ptitchef":
         recipes, source_used = _scraper(ptit_search, ptit_cat, None, "ptitchef.com"), "ptitchef"
     else:
-        # Pour les catégories EN sans équivalent TheMealDB, utiliser traduction FR pour 750g
+        # Pour les catégories EN sans équivalent TheMealDB, utiliser traduction FR pour 750g/Marmiton
         cat_norm = _normalize_category(category) if category else ""
-        q_for_750g = CATEGORY_EN_TO_FR_750G.get(cat_norm, q or category)
-        # Cascade auto : TheMealDB (API fiable) → 750g (scraping FR)
+        q_for_fr  = CATEGORY_EN_TO_FR_750G.get(cat_norm, q or category)
+        # Cascade auto : TheMealDB → Spoonacular → 750g → Marmiton → Base locale Kaggle
+        _q_local = q or cat_norm
         for src_name, fn in [
-            ("themealdb", _mealdb),
+            ("themealdb",   _mealdb),
+            ("spoonacular", lambda: [r for r in (
+                spoon_cat(category, n) if category else spoon_search(q, n)
+            ) if r.get("title")]),
             ("750g", lambda: _scraper(
-                lambda kw, **kw2: g750_search(q_for_750g, **kw2),
-                lambda kw, **kw2: g750_cat(q_for_750g, **kw2),
+                lambda kw, **kw2: g750_search(q_for_fr, **kw2),
+                lambda kw, **kw2: g750_cat(q_for_fr, **kw2),
                 g750_scrape, "750g.com"
             )),
+            ("marmiton", lambda: [
+                r for r in [marm_scrape(u) for u in (marm_search(q_for_fr, page=page, n=n) or [])[:n]]
+                if r.get("title") and "error" not in r
+            ]),
+            ("local", lambda: (
+                ldb_cat(cat_norm, n) if category else ldb_query(_q_local, n)
+            ) if ldb_ok() else []),
         ]:
             try:
                 result = fn()
@@ -387,6 +409,62 @@ def ptitchef():
             recipes.append(r)
     return _cors(jsonify({
         "source": "ptitchef", "query": q or category, "page": page,
+        "count": len(recipes), "recipes": recipes, "context_for_ai": build_ai_context(recipes),
+    }))
+
+
+# ============================================================
+# /api/marmiton
+# ============================================================
+
+@app.route("/api/marmiton")
+def marmiton():
+    q, category = request.args.get("q", ""), request.args.get("category", "")
+    n, page     = min(int(request.args.get("n", 1)), 5), int(request.args.get("page", 1))
+    query = q or category
+    if not query:
+        return _cors(jsonify({"error": "Paramètre requis : q ou category"})), 400
+    urls = marm_search(query, page=page, n=n)
+    recipes = []
+    for u in (urls or [])[:n]:
+        try:
+            r = marm_scrape(u)
+            if "error" not in r and r.get("title") and r.get("ingredients"):
+                recipes.append(r)
+        except Exception:
+            continue
+    return _cors(jsonify({
+        "source": "marmiton", "query": query, "page": page,
+        "count": len(recipes), "recipes": recipes, "context_for_ai": build_ai_context(recipes),
+    }))
+
+
+# ============================================================
+# /api/edamam  /api/spoonacular  — clés requises
+# ============================================================
+
+@app.route("/api/edamam")
+def edamam_missing():
+    return _cors(jsonify({"error": "Clé Edamam requise. Alternative : /api/recipe?q=VOTRE_RECHERCHE"})), 400
+
+
+# ============================================================
+# /api/local  (Base SQLite Kaggle 2.2M recettes)
+# ============================================================
+
+@app.route("/api/local")
+def local_db_endpoint():
+    q        = request.args.get("q", "").strip()
+    category = request.args.get("category", "").strip()
+    n        = min(int(request.args.get("n", 1)), 5)
+    if not ldb_ok():
+        return _cors(jsonify({"error": "Base locale non disponible. Lancez setup_local_db.py d'abord."})), 503
+    if not q and not category:
+        return _cors(jsonify({"error": "Paramètre requis : q ou category"})), 400
+    cat_norm = _normalize_category(category) if category else ""
+    recipes  = ldb_cat(cat_norm, n) if category else ldb_query(q, n)
+    return _cors(jsonify({
+        "source": "local", "query": q or category,
         "count": len(recipes), "recipes": recipes, "context_for_ai": build_ai_context(recipes),
     }))
 
