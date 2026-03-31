@@ -1,0 +1,9 @@
+recipes.db
+recipes_online.db
+__pycache__/
+*.pyc
+.env
+.git
+demo.py
+create_compact_db.py
+setup_local_db.py

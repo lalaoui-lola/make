@@ -14,7 +14,8 @@ import sys, os, sqlite3, json, random
 sys.path.insert(0, os.path.dirname(__file__))
 from utils import make_recipe, error_response
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "recipes.db")
+_LOCAL = os.path.join(os.path.dirname(__file__), "..", "recipes.db")
+DB_PATH = "/data/recipes.db" if os.path.exists("/data/recipes.db") else _LOCAL
 
 
 def _db_available():
