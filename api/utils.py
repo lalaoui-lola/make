@@ -151,7 +151,21 @@ def parse_json_ld_recipe(json_ld, url=""):
     def _ingredients(raw):
         if isinstance(raw, list):
             return [str(i).strip() for i in raw if i]
+        if isinstance(raw, str) and raw.strip():
+            return [raw.strip()]
         return []
+
+    def _ingredient_groups(json_ld):
+        """Parse ingredient groups used by WPRM and other plugins."""
+        extra = []
+        for key in ("ingredientGroups", "wprm:ingredientGroups", "recipeIngredientGroup"):
+            groups = json_ld.get(key, [])
+            if isinstance(groups, list):
+                for group in groups:
+                    if isinstance(group, dict):
+                        items = group.get("recipeIngredient", group.get("ingredients", []))
+                        extra.extend(_ingredients(items))
+        return extra
 
     def _steps(raw):
         steps = []
@@ -179,7 +193,10 @@ def parse_json_ld_recipe(json_ld, url=""):
         cook_time=json_ld.get("cookTime", ""),
         total_time=json_ld.get("totalTime", ""),
         servings=_yield(json_ld.get("recipeYield", "")),
-        ingredients=_ingredients(json_ld.get("recipeIngredient", [])),
+        ingredients=list(dict.fromkeys(
+            _ingredients(json_ld.get("recipeIngredient", [])) +
+            _ingredient_groups(json_ld)
+        )),
         steps=_steps(json_ld.get("recipeInstructions", [])),
         image=_image(json_ld.get("image", "")),
         url=url,
@@ -316,17 +333,25 @@ def scrape_url(url, source_site=""):
 
     # 1. Essayer JSON-LD
     json_ld = extract_json_ld(soup)
+    html_ingredients = None
     if json_ld:
         recipe = parse_json_ld_recipe(json_ld, url)
         recipe["source_site"] = source_site or urllib.parse.urlparse(url).netloc
         if recipe["title"] and recipe["ingredients"]:
+            # Try HTML too — use whichever has more ingredients
+            soup_clean = BeautifulSoup(str(soup), "lxml")
+            html_ingredients = extract_ingredients_html(soup_clean)
+            if html_ingredients and len(html_ingredients) > len(recipe["ingredients"]):
+                recipe["ingredients"] = list(dict.fromkeys(recipe["ingredients"] + [
+                    i for i in html_ingredients if i not in recipe["ingredients"]
+                ]))
             return recipe
 
     # 2. Fallback HTML
     soup = clean_html(soup)
     h1 = soup.find("h1")
     title = h1.get_text(strip=True) if h1 else ""
-    ingredients = extract_ingredients_html(soup)
+    ingredients = html_ingredients or extract_ingredients_html(soup)
     steps = extract_steps_html(soup)
 
     # Titre + ingrédients minimums obligatoires
