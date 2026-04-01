@@ -167,23 +167,53 @@ def parse_json_ld_recipe(json_ld, url=""):
                         extra.extend(_ingredients(items))
         return extra
 
+    def _one_step(item):
+        """Extrait le texte d'un HowToStep ou string."""
+        if isinstance(item, str):
+            return item.strip()
+        if isinstance(item, dict):
+            return (item.get("text") or item.get("name") or "").strip()
+        return ""
+
     def _steps(raw):
         steps = []
+        # recipeInstructions peut être une simple chaîne
+        if isinstance(raw, str):
+            for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+                line = line.strip()
+                if line and len(line) > 5:
+                    steps.append(line)
+            return steps
         if not isinstance(raw, list):
             return steps
         for step in raw:
             if isinstance(step, str) and step.strip():
                 steps.append(step.strip())
             elif isinstance(step, dict):
-                text = step.get("text", step.get("name", ""))
-                if text:
-                    steps.append(text.strip())
+                stype = step.get("@type", "")
+                # HowToSection ou ItemList : contient des sous-étapes dans itemListElement
+                if stype in ("HowToSection", "ItemList") or "itemListElement" in step:
+                    sub_items = step.get("itemListElement", [])
+                    if isinstance(sub_items, list):
+                        for sub in sub_items:
+                            t = _one_step(sub)
+                            if t and len(t) > 5:
+                                steps.append(t)
+                    else:
+                        # Ajouter quand même le nom de section comme étape
+                        t = _one_step(step)
+                        if t:
+                            steps.append(t)
+                else:
+                    # HowToStep normal
+                    t = _one_step(step)
+                    if t and len(t) > 5:
+                        steps.append(t)
             elif isinstance(step, list):
                 for sub in step:
-                    if isinstance(sub, dict):
-                        t = sub.get("text", "")
-                        if t:
-                            steps.append(t.strip())
+                    t = _one_step(sub)
+                    if t and len(t) > 5:
+                        steps.append(t)
         return steps
 
     return make_recipe(
@@ -338,13 +368,18 @@ def scrape_url(url, source_site=""):
         recipe = parse_json_ld_recipe(json_ld, url)
         recipe["source_site"] = source_site or urllib.parse.urlparse(url).netloc
         if recipe["title"] and recipe["ingredients"]:
-            # Try HTML too — use whichever has more ingredients
+            # Compare JSON-LD vs HTML — toujours garder le plus complet
             soup_clean = BeautifulSoup(str(soup), "lxml")
             html_ingredients = extract_ingredients_html(soup_clean)
+            html_steps = extract_steps_html(soup_clean)
+            # Ingrédients : merger si HTML en a plus
             if html_ingredients and len(html_ingredients) > len(recipe["ingredients"]):
                 recipe["ingredients"] = list(dict.fromkeys(recipe["ingredients"] + [
                     i for i in html_ingredients if i not in recipe["ingredients"]
                 ]))
+            # Étapes : utiliser HTML si JSON-LD est vide ou moins complet
+            if html_steps and len(html_steps) > len(recipe.get("steps", [])):
+                recipe["steps"] = html_steps
             return recipe
 
     # 2. Fallback HTML
