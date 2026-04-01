@@ -128,6 +128,26 @@ CATEGORY_EN_TO_FR_750G = {
     "risotto":      "risotto",
     "stir fry":     "sauté",
     "stir-fry":     "sauté",
+    "lunch":         "déjeuner",
+    "breakfast":     "petit-déjeuner",
+    "brunch":        "brunch",
+    "dinner":        "dîner",
+    "supper":        "dîner",
+    "appetizer":     "entrée",
+    "appetizers":    "entrée",
+    "starter":       "entrée",
+    "starters":      "entrée",
+    "main course":   "plat principal",
+    "main":          "plat principal",
+    "main dish":     "plat principal",
+    "side dish":     "accompagnement",
+    "side dishes":   "accompagnement",
+    "vegetarian":    "végétarien",
+    "vegan":         "vegan",
+    "gluten free":   "sans gluten",
+    "low carb":      "léger",
+    "high protein":  "protéiné",
+    "comfort food":  "plat réconfortant",
 }
 
 
@@ -285,7 +305,7 @@ def recipe():
                 if r.get("title") and "error" not in r
             ]),
             ("local", lambda: (
-                ldb_cat(cat_norm, n) if category else ldb_query(_q_local, n)
+                (ldb_cat(cat_norm, n) or ldb_query(cat_norm, n)) if category else ldb_query(_q_local, n)
             ) if ldb_ok() else []),
         ]:
             try:
