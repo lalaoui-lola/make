@@ -125,10 +125,23 @@ def search_by_query(query, n=3):
     try:
         words = query.lower().split()
         if _use_turso():
-            rows = _turso_query(
-                "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
-                [f"%{words[0]}%", n]
-            )
+            if len(words) == 1:
+                rows = _turso_query(
+                    "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
+                    [f"%{words[0]}%", n]
+                )
+            else:
+                # Recherche multi-mots : AND sur les 2 premiers mots
+                rows = _turso_query(
+                    "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? AND title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
+                    [f"%{words[0]}%", f"%{words[1]}%", n]
+                )
+                if not rows:
+                    # Fallback : premier mot seul
+                    rows = _turso_query(
+                        "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
+                        [f"%{words[0]}%", n]
+                    )
         else:
             conn = sqlite3.connect(DB_PATH)
             if len(words) == 1:

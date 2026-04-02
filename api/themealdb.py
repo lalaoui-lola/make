@@ -174,7 +174,9 @@ CATEGORY_MAP_FR = {
     "world cuisine":         "Miscellaneous",
     "cooking technique":     "Miscellaneous",
     "nutrition tips":        "Vegetarian",
+    "nutritions tips":       "Vegetarian",   # typo category (avec s)
     "easy weekday meals":    "Miscellaneous",
+    "easy weekday":          "Miscellaneous", # normalize supprime 'meals'
     "ready in 15 minutes":   "Miscellaneous",
     "low calorie meals":     "Vegetarian",
     "low calorie":           "Vegetarian",
@@ -182,6 +184,13 @@ CATEGORY_MAP_FR = {
     "gluten free receipe":   "Miscellaneous",
     "healthy recipe":        "Vegetarian",
     "healthy receipe":       "Vegetarian",
+    "healthy breakfast idea":  "Breakfast",
+    "healthy breakfast ideas": "Breakfast",
+    "healthy breakfast":     "Breakfast",    # normalize supprime 'idea'
+    "appetizer finger food": "Starter",
+    "appetizer finger":      "Starter",      # normalize supprime 'food'
+    "meals planning ideas":  "Miscellaneous",
+    "meals planning":        "Miscellaneous", # normalize supprime 'ideas'
 }
 
 

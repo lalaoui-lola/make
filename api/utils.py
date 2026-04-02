@@ -55,6 +55,7 @@ def make_recipe(
     servings="",
     ingredients=None,
     steps=None,
+    tips=None,
     image="",
     url="",
     source_site="",
@@ -72,6 +73,7 @@ def make_recipe(
         "servings": str(servings),
         "ingredients": ingredients or [],
         "steps": steps or [],
+        "tips": tips or [],
         "image": image,
         "url": url,
         "source_site": source_site,
@@ -343,13 +345,73 @@ def extract_steps_html(soup):
 
 
 # ============================================================
+# EXTRACTION DESCRIPTION + CONSEILS (TIPS)
+# ============================================================
+
+def extract_description_html(soup):
+    """Extrait l'intro/description de la recette (meta og ou premier paragraphe)."""
+    # 1. Meta description og
+    for attrs in [{"property": "og:description"}, {"name": "description"}]:
+        meta = soup.find("meta", attrs=attrs)
+        if meta and meta.get("content", "").strip():
+            return meta["content"].strip()[:600]
+    # 2. Premier paragraphe substantiel dans article/main/body
+    for tag in ["article", "main", "body"]:
+        container = soup.find(tag)
+        if not container:
+            continue
+        for p in container.find_all("p", limit=10):
+            t = p.get_text(separator=" ", strip=True)
+            if t and len(t) > 80:
+                return t[:600]
+    return ""
+
+
+def extract_tips_html(soup):
+    """Extrait les conseils/astuces/notes de la recette."""
+    results = []
+    tip_kws = ["tip", "conseil", "astuce", "note", "hint", "suggestion", "variante", "variation"]
+    # 1. Sections/divs avec classes contenant ces mots
+    for section in soup.find_all(True, class_=re.compile(r"(tip|conseil|astuce|note|hint)", re.I)):
+        for li in section.find_all("li"):
+            t = li.get_text(separator=" ", strip=True)
+            if t and len(t) > 10:
+                results.append(t)
+        if not results:
+            t = section.get_text(separator=" ", strip=True)
+            if t and 15 < len(t) < 600:
+                results.append(t)
+    if results:
+        return list(dict.fromkeys(results))
+    # 2. Headings contenant ces mots-clés
+    for el in soup.find_all(["h2", "h3", "h4"]):
+        heading = el.get_text().lower()
+        if any(kw in heading for kw in tip_kws):
+            nxt = el.find_next_sibling()
+            while nxt and nxt.name not in ["h2", "h3", "h4"]:
+                if nxt.name in ["ol", "ul"]:
+                    for li in nxt.find_all("li"):
+                        t = li.get_text(separator=" ", strip=True)
+                        if t and len(t) > 5:
+                            results.append(t)
+                elif nxt.name == "p":
+                    t = nxt.get_text(separator=" ", strip=True)
+                    if t and len(t) > 10:
+                        results.append(t)
+                nxt = nxt.find_next_sibling()
+            if results:
+                break
+    return results
+
+
+# ============================================================
 # SCRAPER URL GÉNÉRIQUE  (json-ld → fallback html)
 # ============================================================
 
 def scrape_url(url, source_site=""):
     """
-    Télécharge une page et extrait la recette.
-    Essaie JSON-LD d'abord, puis fallback HTML.
+    Télécharge une page et extrait la recette COMPLÈTE.
+    Priorité JSON-LD, enrichi par HTML (ingrédients, étapes, tips, description).
     """
     try:
         resp = req.get(url, headers=get_headers(referer="https://www.google.fr/"), timeout=15)
@@ -368,40 +430,48 @@ def scrape_url(url, source_site=""):
         recipe = parse_json_ld_recipe(json_ld, url)
         recipe["source_site"] = source_site or urllib.parse.urlparse(url).netloc
         if recipe["title"] and recipe["ingredients"]:
-            # Compare JSON-LD vs HTML — toujours garder le plus complet
-            soup_clean = BeautifulSoup(str(soup), "lxml")
-            html_ingredients = extract_ingredients_html(soup_clean)
-            html_steps = extract_steps_html(soup_clean)
+            # Copie du soup original pour extraction HTML complémentaire
+            soup_copy = BeautifulSoup(str(soup), "lxml")
+            html_ingredients = extract_ingredients_html(soup_copy)
+            html_steps       = extract_steps_html(soup_copy)
+            html_tips        = extract_tips_html(soup_copy)
+            html_desc        = extract_description_html(soup_copy)
             # Ingrédients : merger si HTML en a plus
             if html_ingredients and len(html_ingredients) > len(recipe["ingredients"]):
-                recipe["ingredients"] = list(dict.fromkeys(recipe["ingredients"] + [
-                    i for i in html_ingredients if i not in recipe["ingredients"]
-                ]))
-            # Étapes : utiliser HTML si JSON-LD est vide ou moins complet
+                recipe["ingredients"] = list(dict.fromkeys(
+                    recipe["ingredients"] +
+                    [i for i in html_ingredients if i not in recipe["ingredients"]]
+                ))
+            # Étapes : prendre HTML si plus complet que JSON-LD
             if html_steps and len(html_steps) > len(recipe.get("steps", [])):
                 recipe["steps"] = html_steps
+            # Tips : toujours extraire depuis HTML
+            if html_tips and not recipe.get("tips"):
+                recipe["tips"] = html_tips
+            # Description : enrichir si vide ou plus courte
+            if html_desc and len(html_desc) > len(recipe.get("description", "")):
+                recipe["description"] = html_desc
             return recipe
 
-    # 2. Fallback HTML
+    # 2. Fallback HTML — extraire description AVANT clean_html
+    fallback_desc = extract_description_html(soup)
     soup = clean_html(soup)
     h1 = soup.find("h1")
     title = h1.get_text(strip=True) if h1 else ""
     ingredients = html_ingredients or extract_ingredients_html(soup)
     steps = extract_steps_html(soup)
+    tips  = extract_tips_html(soup)
 
     # Titre + ingrédients minimums obligatoires
     if not title or not ingredients:
         return error_response("Impossible d'extraire la recette depuis cette page.")
 
-    full_text = ""
-    article = soup.find("article") or soup.find("main") or soup.find("body")
-    if article:
-        full_text = article.get_text(separator="\n", strip=True)[:4000]
-
     return make_recipe(
         title=title,
+        description=fallback_desc,
         ingredients=ingredients,
         steps=steps,
+        tips=tips,
         url=url,
         source_site=source_site or urllib.parse.urlparse(url).netloc,
         source_type="html",
@@ -413,18 +483,20 @@ def scrape_url(url, source_site=""):
 # ============================================================
 
 def build_ai_context(recipes):
-    """Construit un bloc texte condensé pour GPT depuis les recettes récupérées."""
+    """Construit un bloc texte complet pour GPT depuis les recettes récupérées."""
     parts = []
     for i, r in enumerate(recipes, 1):
         if isinstance(r, dict) and "error" not in r:
             block = [f"=== RECETTE SOURCE {i} ({r.get('source_site', 'inconnu')}) ==="]
             if r.get("title"):        block.append(f"Titre: {r['title']}")
-            if r.get("description"):  block.append(f"Description: {r['description'][:300]}")
+            if r.get("description"):  block.append(f"Description: {r['description'][:500]}")
             if r.get("prep_time"):    block.append(f"Préparation: {r['prep_time']}")
             if r.get("cook_time"):    block.append(f"Cuisson: {r['cook_time']}")
+            if r.get("total_time"):   block.append(f"Temps total: {r['total_time']}")
             if r.get("servings"):     block.append(f"Portions: {r['servings']}")
             if r.get("ingredients"):  block.append("Ingrédients:\n- " + "\n- ".join(r["ingredients"]))
             if r.get("steps"):        block.append("Étapes:\n" + "\n".join(f"{j}. {s}" for j, s in enumerate(r["steps"], 1)))
+            if r.get("tips"):         block.append("Conseils & Astuces:\n- " + "\n- ".join(r["tips"]))
             parts.append("\n".join(block))
     return "\n\n".join(parts) or "Aucune recette trouvée."
 

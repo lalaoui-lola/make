@@ -187,8 +187,17 @@ CATEGORY_EN_TO_FR_750G = {
     "world cuisine":         "monde",
     "cooking technique":     "technique",
     "meals planning ideas":  "repas",
+    "meals planning":        "repas",         # normalize supprime 'ideas'
     "meal prep":             "repas",
     "nutrition tips":        "léger",
+    "nutritions tips":       "léger",         # typo category (avec s)
+    "easy weekday meals":    "rapide",
+    "easy weekday":          "rapide",         # normalize supprime 'meals'
+    "healthy breakfast idea":  "petit-déjeuner",
+    "healthy breakfast ideas": "petit-déjeuner",
+    "healthy breakfast":     "petit-déjeuner",  # normalize supprime 'idea'
+    "appetizer finger food": "entrée",
+    "appetizer finger":      "entrée",          # normalize supprime 'food'
 }
 
 
@@ -241,7 +250,7 @@ def health():
             "spoonacular": "✅ Clé active (150/jour, 365k recettes EN)",
             "750g":        "✅ Gratuit, scraping FR (50k+ recettes)",
             "marmiton":    "✅ Gratuit, scraping FR (60k+ recettes)",
-            "local":       "✅ Base Kaggle locale (2.2M recettes)" if ldb_ok() else "⚠️ Base locale non créée (lancer setup_local_db.py)",
+            "local":       "✅ Turso cloud / SQLite local — 2.2M recettes — PRIORITE 1" if ldb_ok() else "⚠️ Base locale non disponible (lancer setup_local_db.py ou configurer TURSO_URL + TURSO_TOKEN)",
             "cuisineaz":   "⚠️ JS-rendered (désactivé)",
             "ptitchef":    "⚠️ JS-rendered (désactivé)",
         },
@@ -329,9 +338,70 @@ def recipe():
         # Pour les catégories EN sans équivalent TheMealDB, utiliser traduction FR pour 750g/Marmiton
         cat_norm = _normalize_category(category) if category else ""
         q_for_fr  = CATEGORY_EN_TO_FR_750G.get(cat_norm, q or category)
-        # Cascade auto : TheMealDB → Spoonacular → 750g → Marmiton → Base locale Kaggle
-        _q_local = q or cat_norm
+        # Variables pour la base Turso/Kaggle (données EN → traduire la requête FR→EN)
+        _q_local     = q or cat_norm
+        _q_local_en  = _translate_fr_to_en(_q_local) if _q_local else _q_local
+        # Catégorie anglaise Kaggle (ex: "Dessert", "Chicken", "Beef"...)
+        _cat_en_kaggle = CATEGORY_MAP_FR.get(cat_norm, "")
+
+        # Mapping : catégories qui valent "Miscellaneous"/"Starter" dans Kaggle
+        # → mot-clé anglais à chercher dans les TITRES des 2.2M recettes
+        KAGGLE_KEYWORD_MAP = {
+            "appetizer finger":      "appetizer",
+            "appetizer finger food": "appetizer",
+            "cooking technique":     "easy",
+            "easy weekday":          "easy",
+            "easy weekday meals":    "easy",
+            "gluten free receipe":   "gluten",
+            "gluten free recipe":    "gluten",
+            "international cuisine": "international",
+            "mains courses":         "dinner",
+            "meals planning":        "meal",
+            "meals planning ideas":  "meal",
+            "ready in 15 minutes":   "quick",
+            "nutrition tips":        "healthy",
+            "nutritions tips":       "healthy",
+        }
+
+        def _local_search():
+            """Recherche intelligente dans Turso/SQLite.
+            - Catégories Kaggle réelles (Dessert, Breakfast...) → ldb_cat
+            - Catégories "Miscellaneous"/"Starter" → recherche par mot-clé dans titres
+            - Catégories FR → traduit EN avant de chercher
+            """
+            results = []
+
+            # Catégories Kaggle disponibles (pas Miscellaneous ni Starter)
+            REAL_KAGGLE_CATS = {
+                "Chicken", "Beef", "Pork", "Seafood", "Pasta",
+                "Dessert", "Breakfast", "Soup", "Salad", "Bread",
+                "Vegan", "Vegetarian", "Side", "Lamb",
+            }
+
+            # 1. Catégorie réelle Kaggle → ldb_cat direct
+            if _cat_en_kaggle and _cat_en_kaggle in REAL_KAGGLE_CATS:
+                results = ldb_cat(_cat_en_kaggle, n)
+
+            # 2. Catégorie "Miscellaneous"/"Starter"/inconnue → mot-clé dans titres
+            if not results:
+                kw = KAGGLE_KEYWORD_MAP.get(cat_norm, "")
+                if kw:
+                    results = ldb_query(kw, n)
+
+            # 3. Query traduite EN (ex: "cake" pour "gateau")
+            if not results and _q_local_en and _q_local_en.strip() != _q_local.strip():
+                results = ldb_query(_q_local_en, n)
+
+            # 4. Query originale
+            if not results and _q_local:
+                results = ldb_query(_q_local, n)
+
+            return results or []
+
+
+        # Cascade : Turso 2.2M EN PREMIER → TheMealDB → Spoonacular → 750g → Marmiton
         for src_name, fn in [
+            ("local", _local_search if ldb_ok() else lambda: []),
             ("themealdb",   _mealdb),
             ("spoonacular", lambda: [r for r in (
                 spoon_cat(category, n) if category else spoon_search(q, n)
@@ -345,9 +415,6 @@ def recipe():
                 r for r in [marm_scrape(u) for u in (marm_search(q_for_fr, page=page, n=n) or [])[:n]]
                 if r.get("title") and "error" not in r
             ]),
-            ("local", lambda: (
-                (ldb_cat(cat_norm, n) or ldb_query(cat_norm, n)) if category else ldb_query(_q_local, n)
-            ) if ldb_ok() else []),
         ]:
             try:
                 result = fn()
