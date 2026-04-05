@@ -327,13 +327,25 @@ def recipe():
             return results
 
     if source == "themealdb":
-        recipes, source_used = _mealdb(), "themealdb"
+        try:
+            recipes, source_used = _mealdb(), "themealdb"
+        except Exception:
+            recipes, source_used = [], "themealdb"
     elif source == "750g":
-        recipes, source_used = _scraper(g750_search, g750_cat, g750_scrape, "750g.com"), "750g"
+        try:
+            recipes, source_used = _scraper(g750_search, g750_cat, g750_scrape, "750g.com"), "750g"
+        except Exception:
+            recipes, source_used = [], "750g"
     elif source == "cuisineaz":
-        recipes, source_used = _scraper(caz_search, caz_cat, None, "cuisineaz.com"), "cuisineaz"
+        try:
+            recipes, source_used = _scraper(caz_search, caz_cat, None, "cuisineaz.com"), "cuisineaz"
+        except Exception:
+            recipes, source_used = [], "cuisineaz"
     elif source == "ptitchef":
-        recipes, source_used = _scraper(ptit_search, ptit_cat, None, "ptitchef.com"), "ptitchef"
+        try:
+            recipes, source_used = _scraper(ptit_search, ptit_cat, None, "ptitchef.com"), "ptitchef"
+        except Exception:
+            recipes, source_used = [], "ptitchef"
     else:
         # Pour les catégories EN sans équivalent TheMealDB, utiliser traduction FR pour 750g/Marmiton
         cat_norm = _normalize_category(category) if category else ""
