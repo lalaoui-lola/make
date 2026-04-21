@@ -41,7 +41,7 @@ def _turso_query(sql, args=None):
         headers={"Authorization": f"Bearer {TURSO_TOKEN}",
                  "Content-Type": "application/json"},
         json=payload,
-        timeout=15
+        timeout=20
     )
     resp.raise_for_status()
     results = resp.json().get("results", [])
@@ -49,6 +49,26 @@ def _turso_query(sql, args=None):
         return []
     rows_data = results[0].get("response", {}).get("result", {}).get("rows", [])
     return [[col.get("value") for col in row] for row in rows_data]
+
+
+def _turso_random_query(where_sql, args, n):
+    """
+    Sélectionne n lignes aléatoires sans ORDER BY RANDOM() (trop coûteux).
+    Utilise un offset aléatoire basé sur MAX(id) pour lire ~n lignes seulement.
+    """
+    import random as _rand
+    # 1. Obtenir le max id (1 seule ligne lue)
+    max_rows = _turso_query("SELECT MAX(id) FROM recipes")
+    max_id = int(max_rows[0][0]) if max_rows and max_rows[0][0] else 2500000
+    # 2. Choisir un offset aléatoire et sélectionner les lignes correspondantes
+    offset = _rand.randint(0, max(1, max_id - n * 10))
+    sql = f"SELECT title,ingredients,steps,link,site,category FROM recipes WHERE {where_sql} AND id >= ? LIMIT ?"
+    rows = _turso_query(sql, args + [offset, n])
+    # 3. Si pas assez de résultats avec cet offset, retenter sans contrainte d'offset
+    if not rows:
+        sql2 = f"SELECT title,ingredients,steps,link,site,category FROM recipes WHERE {where_sql} LIMIT ?"
+        rows = _turso_query(sql2, args + [n])
+    return rows
 
 
 def _db_available():
@@ -92,15 +112,9 @@ def search_by_category(category, n=3, page=1):
         return []
     try:
         if _use_turso():
-            rows = _turso_query(
-                "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE category=? ORDER BY RANDOM() LIMIT ?",
-                [category, n]
-            )
+            rows = _turso_random_query("category=?", [category], n)
             if not rows:
-                rows = _turso_query(
-                    "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
-                    [f"%{category.lower()}%", n]
-                )
+                rows = _turso_random_query("title_lower LIKE ?", [f"%{category.lower()}%"], n)
         else:
             conn = sqlite3.connect(DB_PATH)
             rows = conn.execute(
@@ -126,22 +140,15 @@ def search_by_query(query, n=3):
         words = query.lower().split()
         if _use_turso():
             if len(words) == 1:
-                rows = _turso_query(
-                    "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
-                    [f"%{words[0]}%", n]
-                )
+                rows = _turso_random_query("title_lower LIKE ?", [f"%{words[0]}%"], n)
             else:
                 # Recherche multi-mots : AND sur les 2 premiers mots
-                rows = _turso_query(
-                    "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? AND title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
-                    [f"%{words[0]}%", f"%{words[1]}%", n]
+                rows = _turso_random_query(
+                    "title_lower LIKE ? AND title_lower LIKE ?",
+                    [f"%{words[0]}%", f"%{words[1]}%"], n
                 )
                 if not rows:
-                    # Fallback : premier mot seul
-                    rows = _turso_query(
-                        "SELECT title,ingredients,steps,link,site,category FROM recipes WHERE title_lower LIKE ? ORDER BY RANDOM() LIMIT ?",
-                        [f"%{words[0]}%", n]
-                    )
+                    rows = _turso_random_query("title_lower LIKE ?", [f"%{words[0]}%"], n)
         else:
             conn = sqlite3.connect(DB_PATH)
             if len(words) == 1:
