@@ -30,17 +30,23 @@ def _cmd(*args):
         return None
 
 
-def is_seen(category, title):
-    """Retourne True si ce titre a déjà été retourné pour cette catégorie."""
+def _recipe_key(recipe):
+    """Clé unique d'une recette : URL en priorité, sinon titre."""
+    url = (recipe.get("url") or recipe.get("link") or "").strip()
+    return url if url else recipe.get("title", "").lower().strip()
+
+
+def is_seen(category, recipe):
+    """Retourne True si cette recette (par URL) a déjà été retournée."""
     key = f"seen:{category[:40]}"
-    result = _cmd("SISMEMBER", key, title.lower().strip())
+    result = _cmd("SISMEMBER", key, _recipe_key(recipe))
     return result == 1
 
 
-def mark_seen(category, title):
-    """Enregistre ce titre comme vu pour cette catégorie (permanent)."""
+def mark_seen(category, recipe):
+    """Enregistre cette recette (par URL) comme vue (permanent)."""
     key = f"seen:{category[:40]}"
-    _cmd("SADD", key, title.lower().strip())
+    _cmd("SADD", key, _recipe_key(recipe))
 
 
 def reset_category(category):
@@ -50,20 +56,20 @@ def reset_category(category):
 
 def filter_unseen(recipes, category):
     """
-    Filtre les recettes déjà vues.
+    Filtre les recettes déjà vues (comparaison par URL).
     Si toutes vues → reset automatique et retourne quand même les recettes.
     Si Redis indisponible → retourne toutes les recettes sans filtre.
     """
     if not _available():
         return recipes
 
-    unseen = [r for r in recipes if not is_seen(category, r.get("title", ""))]
+    unseen = [r for r in recipes if not is_seen(category, r)]
 
     if not unseen and recipes:
         reset_category(category)
         unseen = recipes
 
     for r in unseen:
-        mark_seen(category, r.get("title", ""))
+        mark_seen(category, r)
 
     return unseen
