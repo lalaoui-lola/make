@@ -411,6 +411,9 @@ def recipe():
             return results or []
 
 
+        import random as _rnd
+        _rnd_page = page if page > 1 else _rnd.randint(1, 6)
+
         # Cascade : Turso 2.2M EN PREMIER → TheMealDB → Spoonacular → 750g → Marmiton
         for src_name, fn in [
             ("local", _local_search if ldb_ok() else lambda: []),
@@ -419,12 +422,12 @@ def recipe():
                 spoon_cat(category, n) if category else spoon_search(q, n)
             ) if r.get("title")]),
             ("750g", lambda: _scraper(
-                lambda kw, **kw2: g750_search(q_for_fr, **kw2),
-                lambda kw, **kw2: g750_cat(q_for_fr, **kw2),
+                lambda kw, **kw2: g750_search(q_for_fr, page=_rnd_page, **kw2),
+                lambda kw, **kw2: g750_cat(q_for_fr, page=_rnd_page, **kw2),
                 g750_scrape, "750g.com"
             )),
             ("marmiton", lambda: [
-                r for r in [marm_scrape(u) for u in (marm_search(q_for_fr, page=page, n=n) or [])[:n]]
+                r for r in [marm_scrape(u) for u in (marm_search(q_for_fr, page=_rnd_page, n=n) or [])[:n]]
                 if r.get("title") and "error" not in r
             ]),
         ]:

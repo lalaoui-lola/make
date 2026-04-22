@@ -98,12 +98,14 @@ def _parse_recipe(data, steps_data=None):
 
 def search_recipes(query, n=3, meal_type=""):
     """Fonction standalone — appelable depuis app.py."""
+    import random
     api_key = _get_key()
     try:
         params = {
             "apiKey": api_key, "number": n,
             "addRecipeInformation": True, "fillIngredients": True,
             "query": query,
+            "offset": random.randint(0, 80),
         }
         if meal_type:
             params["type"] = meal_type
