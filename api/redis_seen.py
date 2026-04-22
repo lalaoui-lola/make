@@ -38,10 +38,9 @@ def is_seen(category, title):
 
 
 def mark_seen(category, title):
-    """Enregistre ce titre comme vu pour cette catégorie."""
+    """Enregistre ce titre comme vu pour cette catégorie (permanent)."""
     key = f"seen:{category[:40]}"
     _cmd("SADD", key, title.lower().strip())
-    _cmd("EXPIRE", key, 2592000)  # expire après 30 jours
 
 
 def reset_category(category):
