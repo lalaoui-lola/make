@@ -19,20 +19,7 @@ from local_db    import search_by_category as ldb_cat, search_by_query as ldb_qu
 from cuisineaz   import _search_urls as caz_search, _list_category_urls as caz_cat
 from ptitchef    import _search_urls as ptit_search, _list_category_urls as ptit_cat
 from utils       import build_ai_context, scrape_url
-
-# ── Déduplication en mémoire (par catégorie/query, reset auto quand tout vu) ──
-_seen_by_key: dict = {}   # { cat_key: set_of_lowercased_titles }
-
-def _filter_unseen(recipes, key):
-    """Retire les recettes déjà retournées pour cette clé. Reset si tout vu."""
-    seen = _seen_by_key.setdefault(key, set())
-    unseen = [r for r in recipes if r.get("title", "").lower().strip() not in seen]
-    if not unseen and recipes:
-        seen.clear()          # Tout vu → on recommence
-        unseen = recipes
-    for r in unseen:
-        seen.add(r.get("title", "").lower().strip())
-    return unseen
+from redis_seen  import filter_unseen as _filter_unseen
 
 # Dictionnaire de traduction FR → EN pour TheMealDB
 FR_TO_EN = {
@@ -450,9 +437,9 @@ def recipe():
                 result = fn()
                 if result:
                     _cat_key = cat_norm or q[:40].lower()
-                    result = _filter_unseen(result, _cat_key)
-                    if result:
-                        recipes, source_used = result, src_name
+                    filtered = _filter_unseen(result, _cat_key)
+                    if filtered:
+                        recipes, source_used = filtered, src_name
                         break
             except Exception:
                 continue
