@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from themealdb   import search_by_name as mdb_search, search_by_category as mdb_cat, CATEGORY_MAP_FR, get_random as mdb_random
 from source_750g import _search_urls as g750_search, _list_category_urls as g750_cat, _scrape_recipe as g750_scrape
 from marmiton    import _search_urls as marm_search, _scrape_recipe as marm_scrape
-from spoonacular import search_recipes as spoon_search, search_by_category as spoon_cat
+from spoonacular import search_recipes as spoon_search, search_by_category as spoon_cat, search_by_special_category as spoon_special
 from local_db    import search_by_category as ldb_cat, search_by_query as ldb_query, is_available as ldb_ok
 from cuisineaz   import _search_urls as caz_search, _list_category_urls as caz_cat
 from ptitchef    import _search_urls as ptit_search, _list_category_urls as ptit_cat
@@ -414,8 +414,9 @@ def recipe():
         import random as _rnd
         _rnd_page = page if page > 1 else _rnd.randint(1, 6)
 
-        # Cascade : Turso 2.2M EN PREMIER → TheMealDB → Spoonacular → 750g → Marmiton
+        # Cascade : Spoonacular spécial → Turso → TheMealDB → Spoonacular → 750g → Marmiton
         for src_name, fn in [
+            ("spoonacular_special", lambda: spoon_special(cat_norm, n) if cat_norm else []),
             ("local", _local_search if ldb_ok() else lambda: []),
             ("themealdb",   _mealdb),
             ("spoonacular", lambda: [r for r in (

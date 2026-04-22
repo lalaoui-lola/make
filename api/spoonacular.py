@@ -130,6 +130,91 @@ def search_by_category(category, n=3):
     return search_recipes(query, n=n, meal_type=meal_type)
 
 
+TECHNIQUE_KEYWORDS = [
+    "braised", "roasted", "sauteed", "pan-seared", "slow-cooked",
+    "grilled", "baked", "poached", "steamed", "stir-fried",
+    "caramelized", "marinated", "smoked", "glazed", "blanched",
+    "deep-fried", "pressure cooker", "air fryer", "broiled", "flambeed",
+]
+
+SPECIAL_CATEGORY_PARAMS = {
+    "gluten free recipe":   {"diet": "gluten free"},
+    "gluten free receipe":  {"diet": "gluten free"},
+    "gluten free":          {"diet": "gluten free"},
+    "low carb":             {"diet": "low carb"},
+    "low calorie":          {"maxCalories": 400},
+    "low calorie meals":    {"maxCalories": 400},
+    "high protein":         {"minProtein": 30, "type": "main course"},
+    "ready in 15 minutes":  {"maxReadyTime": 15},
+    "ready in 15":          {"maxReadyTime": 15},
+    "quick meals":          {"maxReadyTime": 20},
+    "snack":                {"type": "snack"},
+    "snacks":               {"type": "snack"},
+    "lunch":                {"type": "main course"},
+    "dinner":               {"type": "main course"},
+    "supper":               {"type": "main course"},
+    "main course":          {"type": "main course"},
+    "main courses":         {"type": "main course"},
+    "mains courses":        {"type": "main course"},
+    "main dish":            {"type": "main course"},
+    "comfort food":         {"type": "main course"},
+    "easy weekday":         {"maxReadyTime": 30, "type": "main course"},
+    "easy weekday meals":   {"maxReadyTime": 30, "type": "main course"},
+    "nutrition tips":       {"maxCalories": 450, "diet": "whole 30"},
+    "nutritions tips":      {"maxCalories": 450, "diet": "whole 30"},
+    "meals planning":       {"type": "main course"},
+    "meals planning ideas": {"type": "main course"},
+    "meal prep":            {"type": "main course"},
+    "international cuisine":{"type": "main course"},
+    "world cuisine":        {"type": "main course"},
+}
+
+
+def search_by_special_category(cat_norm, n=1):
+    """
+    Recherche Spoonacular avec paramètres spéciaux selon la catégorie.
+    Retourne [] si la catégorie n'a pas de mapping spécial.
+    """
+    import random
+    api_key = _get_key()
+
+    is_technique = any(w in cat_norm for w in ("cooking technique", "cooking tip", "technique", "cooking method"))
+
+    if is_technique:
+        query       = random.choice(TECHNIQUE_KEYWORDS)
+        extra_params = {"instructionsRequired": True}
+    elif cat_norm in SPECIAL_CATEGORY_PARAMS:
+        query       = ""
+        extra_params = SPECIAL_CATEGORY_PARAMS[cat_norm]
+    else:
+        return []
+
+    try:
+        params = {
+            "apiKey":               api_key,
+            "number":               n,
+            "addRecipeInformation": True,
+            "fillIngredients":      True,
+            "instructionsRequired": True,
+            "offset":               random.randint(0, 60),
+        }
+        if query:
+            params["query"] = query
+        params.update(extra_params)
+
+        r = req.get(f"{SPOON_BASE}/complexSearch", params=params, timeout=15)
+        r.raise_for_status()
+        results = r.json().get("results", [])
+        recipes = []
+        for item in results[:n]:
+            recipe = _parse_recipe(item, [])
+            if recipe.get("title") and recipe.get("ingredients"):
+                recipes.append(recipe)
+        return recipes
+    except Exception:
+        return []
+
+
 @app.route("/api/spoonacular", methods=["GET"])
 def spoonacular():
     """
